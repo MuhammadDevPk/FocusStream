@@ -19,8 +19,6 @@ const isPlaying = ref(true)
 const speed = ref(2)
 const fontSize = ref(25)
 const position = ref({ x: 0, y: 0 })
-const bannerWidth = ref('70%')
-const bannerHeight = ref('100px')
 
 const isLoaded = ref(false)
 let animationFrameId: number | null = null
@@ -28,14 +26,14 @@ let resizeObserver: ResizeObserver | null = null
 
 // --- State Persistence ---
 const saveState = () => {
-  if (!isLoaded.value) return
+  if (!isLoaded.value || !bannerRef.value) return
   chrome.storage.local.set({
     focusStreamState: {
       position: position.value,
       fontSize: fontSize.value,
       speed: speed.value,
-      width: bannerWidth.value,
-      height: bannerHeight.value
+      width: bannerRef.value.style.width,
+      height: bannerRef.value.style.height
     }
   })
 }
@@ -110,8 +108,13 @@ onMounted(() => {
       if (state.position) position.value = state.position
       if (state.fontSize) fontSize.value = state.fontSize
       if (state.speed) speed.value = state.speed
-      if (state.width) bannerWidth.value = state.width
-      if (state.height) bannerHeight.value = state.height
+      if (state.width && bannerRef.value) bannerRef.value.style.width = state.width
+      if (state.height && bannerRef.value) bannerRef.value.style.height = state.height
+    } else {
+      if (bannerRef.value) {
+        bannerRef.value.style.width = '70%'
+        bannerRef.value.style.height = '100px'
+      }
     }
     
     // Reveal the component after state is loaded to avoid visual snapping/flashing
@@ -126,17 +129,10 @@ onMounted(() => {
 
   // 2. Observe manual browser resizes to dynamically save new dimensions
   if (bannerRef.value) {
-    resizeObserver = new ResizeObserver((entries) => {
+    resizeObserver = new ResizeObserver(() => {
       // Don't capture sizes while still loading defaults
       if (!isLoaded.value) return
-      
-      for (const entry of entries) {
-        if (entry.target === bannerRef.value) {
-          bannerWidth.value = `${bannerRef.value.offsetWidth}px`
-          bannerHeight.value = `${bannerRef.value.offsetHeight}px`
-          saveState()
-        }
-      }
+      saveState()
     })
     resizeObserver.observe(bannerRef.value)
   }
@@ -156,8 +152,6 @@ onUnmounted(() => {
     ref="bannerRef"
     :style="{ 
       transform: `translate(${position.x}px, ${position.y}px)`,
-      width: bannerWidth,
-      height: bannerHeight,
       opacity: isLoaded ? 1 : 0
     }"
     @mousedown="onMouseDown"
