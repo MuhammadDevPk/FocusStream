@@ -197,18 +197,19 @@ onUnmounted(() => {
         />
       </div>
 
-      <!-- Speed Control Slider -->
+      <!-- Speed Control Input -->
       <div class="slider-group">
         <span class="slider-label">Speed</span>
         <input 
-          type="range" 
-          class="custom-slider" 
+          type="number" 
+          class="speed-input" 
           v-model.number="speed" 
-          min="0.5" 
+          min="0.1" 
           max="10" 
-          step="0.5"
+          step="0.1"
           title="Speed control"
         />
+        <span class="slider-label" style="margin-left: -5px; text-transform: lowercase;">x</span>
       </div>
 
       <!-- Close Button -->

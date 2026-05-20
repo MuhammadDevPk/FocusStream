@@ -99,6 +99,8 @@ function createOverlay(initialText: string) {
  * Handle mouse selection events
  */
 function handleSelection(event: MouseEvent) {
+  if (!isExtensionEnabled) return
+
   // If the user clicks inside our own shadow host container, do not modify the overlay
   if (hostElement && (event.target === hostElement || hostElement.contains(event.target as Node))) {
     return
@@ -121,3 +123,32 @@ function handleSelection(event: MouseEvent) {
 // Bind events to the active document
 document.addEventListener('mouseup', handleSelection)
 document.addEventListener('dblclick', handleSelection)
+
+// --- Global Extension On/Off State ---
+let isExtensionEnabled = true
+
+// Initialize from storage
+chrome.storage.local.get(['focusStreamEnabled'], (result) => {
+  if (result.focusStreamEnabled !== undefined) {
+    isExtensionEnabled = !!result.focusStreamEnabled
+  }
+})
+
+// Listen for toggles from the popup or other tabs
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.focusStreamEnabled) {
+    isExtensionEnabled = !!changes.focusStreamEnabled.newValue
+    if (!isExtensionEnabled) {
+      destroyOverlay()
+    }
+  }
+})
+
+// Cmd+O / Ctrl+O Shortcut
+document.addEventListener('keydown', (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault() // Prevent browser's "Open File" dialog
+    const newState = !isExtensionEnabled
+    chrome.storage.local.set({ focusStreamEnabled: newState })
+  }
+})

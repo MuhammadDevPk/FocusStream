@@ -205,3 +205,19 @@
   stroke-width: 2.5;
   fill: none;
 }
+.speed-input {
+  width: 48px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #fff;
+  padding: 2px 4px;
+  font-size: 13px;
+  outline: none;
+  text-align: center;
+}
+
+.speed-input:focus {
+  border-color: #3b82f6;
+  background: rgba(255, 255, 255, 0.15);
+}
