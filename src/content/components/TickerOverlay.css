@@ -40,6 +40,8 @@
   resize: both;
   overflow: hidden;
   cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
   /* Will be overridden by inline styles when dragged/resized */
 }
 

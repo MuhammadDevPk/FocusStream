@@ -17,10 +17,10 @@ const isPlaying = ref(true)
 
 // --- Configurable State ---
 const speed = ref(2)
-const fontSize = ref(15)
+const fontSize = ref(25)
 const position = ref({ x: 0, y: 0 })
-const bannerWidth = ref('100%')
-const bannerHeight = ref('50px')
+const bannerWidth = ref('70%')
+const bannerHeight = ref('100px')
 
 const isLoaded = ref(false)
 let animationFrameId: number | null = null
