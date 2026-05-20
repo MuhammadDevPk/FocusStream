@@ -21,10 +21,13 @@
   left: 0;
   width: 100%;
   height: 100px;
+  min-width: 300px;
+  min-height: 50px;
   background: rgba(15, 17, 23, 0.88);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,6 +37,14 @@
   /* Render on top of everything on the page */
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.35);
   font-size: 14px;
+  resize: both;
+  overflow: hidden;
+  cursor: grab;
+  /* Will be overridden by inline styles when dragged/resized */
+}
+
+.ticker-banner:active {
+  cursor: grabbing;
 }
 
 .marquee-container {
@@ -44,6 +55,11 @@
   align-items: center;
   height: 100%;
   margin-right: 24px;
+  cursor: grab;
+}
+
+.marquee-container:active {
+  cursor: grabbing;
 }
 
 .marquee-text-wrapper {
@@ -54,12 +70,12 @@
 }
 
 .marquee-text {
-  font-size: 25px;
   font-weight: 500;
   letter-spacing: 0.3px;
   color: #ffffff;
   display: inline-block;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  /* font-size is injected inline by Vue */
 }
 
 .controls-container {
@@ -70,6 +86,8 @@
   padding: 6px 18px;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: default;
+  /* Prevent grab cursor on controls */
 }
 
 .control-btn {
@@ -114,18 +132,19 @@
   user-select: none;
 }
 
-.speed-slider {
+.custom-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 80px;
+  width: 70px;
   height: 4px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.15);
   outline: none;
   transition: background 0.3s;
+  cursor: pointer;
 }
 
-.speed-slider::-webkit-slider-thumb {
+.custom-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
@@ -137,12 +156,12 @@
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }
 
-.speed-slider::-webkit-slider-thumb:hover {
+.custom-slider::-webkit-slider-thumb:hover {
   background: #60a5fa;
   transform: scale(1.2);
 }
 
-.speed-slider::-moz-range-thumb {
+.custom-slider::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border: none;
@@ -153,7 +172,7 @@
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }
 
-.speed-slider::-moz-range-thumb:hover {
+.custom-slider::-moz-range-thumb:hover {
   background: #60a5fa;
   transform: scale(1.2);
 }

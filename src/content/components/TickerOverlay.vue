@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   text: string
@@ -14,8 +14,51 @@ const textRef = ref<HTMLSpanElement | null>(null)
 const offset = ref(0)
 const isPlaying = ref(true)
 const speed = ref(2)
+const fontSize = ref(25)
 
 let animationFrameId: number | null = null
+
+// --- Dragging Logic ---
+const position = ref({ x: 0, y: 0 })
+const isDragging = ref(false)
+let dragOffset = { x: 0, y: 0 }
+
+const onMouseDown = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  
+  // Prevent dragging if clicking inside the controls container
+  if (target.closest('.controls-container')) return
+  
+  // Prevent dragging if the user is clicking the native CSS resize handle 
+  // (located in the bottom right corner of the banner)
+  const banner = e.currentTarget as HTMLElement
+  const rect = banner.getBoundingClientRect()
+  const isResizeHandle = (rect.right - e.clientX) < 20 && (rect.bottom - e.clientY) < 20
+  if (isResizeHandle) return
+
+  isDragging.value = true
+  dragOffset.x = e.clientX - position.value.x
+  dragOffset.y = e.clientY - position.value.y
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+const onMouseMove = (e: MouseEvent) => {
+  if (!isDragging.value) return
+  // Prevent accidental text selection highlighting while dragging the banner
+  e.preventDefault()
+  
+  position.value.x = e.clientX - dragOffset.x
+  position.value.y = e.clientY - dragOffset.y
+}
+
+const onMouseUp = () => {
+  isDragging.value = false
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
+}
+// -----------------------
 
 const togglePlay = () => {
   isPlaying.value = !isPlaying.value
@@ -36,11 +79,9 @@ const animate = () => {
   animationFrameId = requestAnimationFrame(animate)
 }
 
-
-
 onMounted(() => {
   if (wrapperRef.value) {
-    // Start text from the center of the screen instead of the far right edge
+    // Start text from the center of the screen
     offset.value = wrapperRef.value.offsetWidth / 2
   }
   animationFrameId = requestAnimationFrame(animate)
@@ -50,17 +91,25 @@ onUnmounted(() => {
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId)
   }
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
 })
 </script>
 
 <template>
-  <div class="ticker-banner">
+  <div 
+    class="ticker-banner"
+    :style="{ transform: `translate(${position.x}px, ${position.y}px)` }"
+    @mousedown="onMouseDown"
+  >
     <div class="marquee-container" ref="wrapperRef">
       <div 
         class="marquee-text-wrapper" 
         :style="{ transform: `translateX(${offset}px)` }"
       >
-        <span class="marquee-text" ref="textRef">{{ props.text }}</span>
+        <span class="marquee-text" ref="textRef" :style="{ fontSize: `${fontSize}px` }">
+          {{ props.text }}
+        </span>
       </div>
     </div>
     
@@ -79,12 +128,27 @@ onUnmounted(() => {
         </svg>
       </button>
 
+      <!-- Font Size Slider -->
+      <div class="slider-group">
+        <span class="slider-label" style="font-size: 14px; font-family: serif; text-transform: none;">Aa</span>
+        <input 
+          type="range" 
+          class="custom-slider" 
+          v-model.number="fontSize" 
+          min="10" 
+          max="72" 
+          step="1"
+          title="Font size control"
+          style="width: 50px;"
+        />
+      </div>
+
       <!-- Speed Control Slider -->
       <div class="slider-group">
         <span class="slider-label">Speed</span>
         <input 
           type="range" 
-          class="speed-slider" 
+          class="custom-slider" 
           v-model.number="speed" 
           min="0.5" 
           max="10" 
