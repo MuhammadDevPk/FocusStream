@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 const props = defineProps<{
   text: string
@@ -10,16 +10,42 @@ const emit = defineEmits<{
 }>()
 
 const wrapperRef = ref<HTMLDivElement | null>(null)
+const bannerRef = ref<HTMLDivElement | null>(null)
 const textRef = ref<HTMLSpanElement | null>(null)
 const offset = ref(0)
 const isPlaying = ref(true)
-const speed = ref(2)
-const fontSize = ref(25)
 
+// --- Configurable State ---
+const speed = ref(2)
+const fontSize = ref(15)
+const position = ref({ x: 0, y: 0 })
+const bannerWidth = ref('100%')
+const bannerHeight = ref('50px')
+
+const isLoaded = ref(false)
 let animationFrameId: number | null = null
+let resizeObserver: ResizeObserver | null = null
+
+// --- State Persistence ---
+const saveState = () => {
+  if (!isLoaded.value) return
+  chrome.storage.local.set({
+    focusStreamState: {
+      position: position.value,
+      fontSize: fontSize.value,
+      speed: speed.value,
+      width: bannerWidth.value,
+      height: bannerHeight.value
+    }
+  })
+}
+
+// Watch state properties and save to chrome storage automatically
+watch([position, fontSize, speed], () => {
+  saveState()
+}, { deep: true })
 
 // --- Dragging Logic ---
-const position = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
 let dragOffset = { x: 0, y: 0 }
 
@@ -30,7 +56,6 @@ const onMouseDown = (e: MouseEvent) => {
   if (target.closest('.controls-container')) return
   
   // Prevent dragging if the user is clicking the native CSS resize handle 
-  // (located in the bottom right corner of the banner)
   const banner = e.currentTarget as HTMLElement
   const rect = banner.getBoundingClientRect()
   const isResizeHandle = (rect.right - e.clientX) < 20 && (rect.bottom - e.clientY) < 20
@@ -46,9 +71,7 @@ const onMouseDown = (e: MouseEvent) => {
 
 const onMouseMove = (e: MouseEvent) => {
   if (!isDragging.value) return
-  // Prevent accidental text selection highlighting while dragging the banner
   e.preventDefault()
-  
   position.value.x = e.clientX - dragOffset.x
   position.value.y = e.clientY - dragOffset.y
 }
@@ -58,8 +81,8 @@ const onMouseUp = () => {
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', onMouseUp)
 }
-// -----------------------
 
+// --- Animation ---
 const togglePlay = () => {
   isPlaying.value = !isPlaying.value
 }
@@ -80,26 +103,63 @@ const animate = () => {
 }
 
 onMounted(() => {
-  if (wrapperRef.value) {
-    // Start text from the center of the screen
-    offset.value = wrapperRef.value.offsetWidth / 2
+  // 1. Load saved state from chrome storage
+  chrome.storage.local.get(['focusStreamState'], (result) => {
+    if (result.focusStreamState) {
+      const state = result.focusStreamState as any
+      if (state.position) position.value = state.position
+      if (state.fontSize) fontSize.value = state.fontSize
+      if (state.speed) speed.value = state.speed
+      if (state.width) bannerWidth.value = state.width
+      if (state.height) bannerHeight.value = state.height
+    }
+    
+    // Reveal the component after state is loaded to avoid visual snapping/flashing
+    isLoaded.value = true
+
+    // Initialize animation starting offset to center
+    if (wrapperRef.value) {
+      offset.value = wrapperRef.value.offsetWidth / 2
+    }
+    animationFrameId = requestAnimationFrame(animate)
+  })
+
+  // 2. Observe manual browser resizes to dynamically save new dimensions
+  if (bannerRef.value) {
+    resizeObserver = new ResizeObserver((entries) => {
+      // Don't capture sizes while still loading defaults
+      if (!isLoaded.value) return
+      
+      for (const entry of entries) {
+        if (entry.target === bannerRef.value) {
+          bannerWidth.value = `${bannerRef.value.offsetWidth}px`
+          bannerHeight.value = `${bannerRef.value.offsetHeight}px`
+          saveState()
+        }
+      }
+    })
+    resizeObserver.observe(bannerRef.value)
   }
-  animationFrameId = requestAnimationFrame(animate)
 })
 
 onUnmounted(() => {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId)
-  }
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', onMouseUp)
+  if (resizeObserver) resizeObserver.disconnect()
 })
 </script>
 
 <template>
   <div 
     class="ticker-banner"
-    :style="{ transform: `translate(${position.x}px, ${position.y}px)` }"
+    ref="bannerRef"
+    :style="{ 
+      transform: `translate(${position.x}px, ${position.y}px)`,
+      width: bannerWidth,
+      height: bannerHeight,
+      opacity: isLoaded ? 1 : 0
+    }"
     @mousedown="onMouseDown"
   >
     <div class="marquee-container" ref="wrapperRef">
