@@ -36,12 +36,7 @@ const animate = () => {
   animationFrameId = requestAnimationFrame(animate)
 }
 
-// Reset positions when text updates
-watch(() => props.text, () => {
-  if (wrapperRef.value) {
-    offset.value = wrapperRef.value.offsetWidth
-  }
-})
+
 
 onMounted(() => {
   if (wrapperRef.value) {
