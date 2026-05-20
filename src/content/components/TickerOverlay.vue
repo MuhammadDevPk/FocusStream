@@ -40,7 +40,8 @@ const animate = () => {
 
 onMounted(() => {
   if (wrapperRef.value) {
-    offset.value = wrapperRef.value.offsetWidth
+    // Start text from the center of the screen instead of the far right edge
+    offset.value = wrapperRef.value.offsetWidth / 2
   }
   animationFrameId = requestAnimationFrame(animate)
 })
