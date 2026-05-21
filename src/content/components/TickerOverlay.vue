@@ -80,6 +80,57 @@ const onMouseUp = () => {
   document.removeEventListener('mouseup', onMouseUp)
 }
 
+// --- Scrubbing / Drag-to-Scroll Logic ---
+const isScrubbing = ref(false)
+let scrubStartX = 0
+let scrubStartOffset = 0
+let wasPlayingBeforeScrub = false
+
+const onScrubMouseDown = (e: MouseEvent) => {
+  // Prevent dragging the whole banner
+  e.stopPropagation()
+
+  isScrubbing.value = true
+  scrubStartX = e.clientX
+  scrubStartOffset = offset.value
+  wasPlayingBeforeScrub = isPlaying.value
+  
+  // Pause playback while scrubbing
+  isPlaying.value = false
+
+  document.addEventListener('mousemove', onScrubMouseMove)
+  document.addEventListener('mouseup', onScrubMouseUp)
+}
+
+const onScrubMouseMove = (e: MouseEvent) => {
+  if (!isScrubbing.value) return
+  e.preventDefault()
+  
+  const deltaX = e.clientX - scrubStartX
+  let newOffset = scrubStartOffset + deltaX
+  
+  // Cap the scrubbing offset so the text doesn't scroll completely out of view
+  if (wrapperRef.value && textRef.value) {
+    const wrapperWidth = wrapperRef.value.offsetWidth
+    const textWidth = textRef.value.offsetWidth
+    if (newOffset > wrapperWidth) newOffset = wrapperWidth
+    if (newOffset < -textWidth) newOffset = -textWidth
+  }
+  
+  offset.value = newOffset
+}
+
+const onScrubMouseUp = () => {
+  if (!isScrubbing.value) return
+  isScrubbing.value = false
+  
+  // Restore playing state
+  isPlaying.value = wasPlayingBeforeScrub
+
+  document.removeEventListener('mousemove', onScrubMouseMove)
+  document.removeEventListener('mouseup', onScrubMouseUp)
+}
+
 const jumpWords = (delta: number) => {
   const textEl = textRef.value
   if (!textEl) return
@@ -191,6 +242,8 @@ onUnmounted(() => {
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', onMouseUp)
+  document.removeEventListener('mousemove', onScrubMouseMove)
+  document.removeEventListener('mouseup', onScrubMouseUp)
   if (resizeObserver) resizeObserver.disconnect()
 })
 </script>
@@ -205,7 +258,12 @@ onUnmounted(() => {
     }"
     @mousedown="onMouseDown"
   >
-    <div class="marquee-container" ref="wrapperRef">
+    <div 
+      class="marquee-container" 
+      ref="wrapperRef"
+      @mousedown="onScrubMouseDown"
+      :class="{ 'is-scrubbing': isScrubbing }"
+    >
       <div 
         class="marquee-text-wrapper" 
         :style="{ transform: `translateX(${offset}px)` }"
