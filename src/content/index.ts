@@ -11,7 +11,9 @@ const textRef = ref('')
 
 // ChatGPT Autodetect State Machine
 let currentObservedNode: HTMLElement | null = null
-let lastClosedStreamElement: HTMLElement | null = null
+let lastCompletedText = ''
+let lastCompletedNode: HTMLElement | null = null
+let userClosedCurrentStream = false
 let lastTextValue = ''
 let lastChangeTime = 0
 let isCurrentlyStreaming = false
@@ -20,15 +22,16 @@ let lastMarkdownCount = 0
 /**
  * Clean up the overlay, unmount the Vue app, and clear polling
  */
-function destroyOverlay() {
+function destroyOverlay(isManualClose = false) {
   if (pollInterval !== null) {
     window.clearInterval(pollInterval)
     pollInterval = null
   }
   
   // Track if we manually closed an active ChatGPT stream to prevent it from immediately re-opening
-  if (currentObservedNode) {
-    lastClosedStreamElement = currentObservedNode
+  if (isManualClose && currentObservedNode) {
+    userClosedCurrentStream = true
+    lastCompletedNode = currentObservedNode
     currentObservedNode = null
     isCurrentlyStreaming = false
   }
@@ -90,7 +93,7 @@ function createOverlay(initialText: string) {
         console.log('[FocusStream] root render called, textRef.value:', textRef.value)
         return h(TickerOverlay, {
           text: textRef.value,
-          onClose: destroyOverlay
+          onClose: () => destroyOverlay(true)
         })
       }
     }
@@ -141,7 +144,7 @@ function handleSelection(event: MouseEvent) {
     }
   } else {
     // If selection is cleared by clicking elsewhere on the page, dismiss the overlay
-    destroyOverlay()
+    destroyOverlay(true)
   }
 }
 
@@ -153,6 +156,7 @@ document.addEventListener('dblclick', handleSelection)
 let isExtensionEnabled = true
 let isGptFeatureEnabled = false
 let gptObserver: MutationObserver | null = null
+let isHistoryInitialized = false
 
 // Initialize states from storage
 chrome.storage.local.get(['focusStreamEnabled', 'focusStreamGptFeature'], (result) => {
@@ -176,6 +180,12 @@ chrome.storage.local.get(['focusStreamEnabled', 'focusStreamGptFeature'], (resul
     return true
   })
   lastMarkdownCount = markdownDivs.length
+  const initialLatest = markdownDivs[lastMarkdownCount - 1] as HTMLElement | null
+  lastCompletedText = initialLatest ? initialLatest.innerText.trim() : ''
+  isHistoryInitialized = markdownDivs.length > 0
+  if (isHistoryInitialized) {
+    lastCompletedNode = initialLatest
+  }
   
   toggleGptObserver()
 })
@@ -186,7 +196,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (changes.focusStreamEnabled) {
       isExtensionEnabled = !!changes.focusStreamEnabled.newValue
       if (!isExtensionEnabled) {
-        destroyOverlay()
+        destroyOverlay(true)
       }
     }
     if (changes.focusStreamGptFeature) {
@@ -226,8 +236,10 @@ function toggleGptObserver() {
       gptObserver = null
     }
     currentObservedNode = null
-    lastClosedStreamElement = null
+    lastCompletedNode = null
+    userClosedCurrentStream = false
     isCurrentlyStreaming = false
+    isHistoryInitialized = false
   }
 }
 
@@ -249,30 +261,71 @@ function handleGptMutations() {
   const count = markdownDivs.length
   const latestMarkdown = markdownDivs[count - 1] as HTMLElement | null
 
+  // Reset tracking if chat is completely empty/cleared or switching
+  if (count === 0) {
+    isHistoryInitialized = false
+    lastMarkdownCount = 0
+    lastCompletedText = ''
+    lastCompletedNode = null
+    if (currentObservedNode) {
+      currentObservedNode = null
+      isCurrentlyStreaming = false
+    }
+    console.log('[FocusStream GPT] Chat empty, observer reset')
+    return
+  }
+
   // Check if ChatGPT is currently generating/streaming a response
   const isGptGenerating = !!(
-    document.querySelector('button[aria-label*="Stop"]') ||
-    document.querySelector('button[title*="Stop"]') ||
-    document.querySelector('button[data-testid*="stop"]') ||
+    document.querySelector('button[aria-label*="stop" i]') ||
+    document.querySelector('button[title*="stop" i]') ||
+    document.querySelector('button[data-testid*="stop" i]') ||
+    document.querySelector('[class*="streaming" i]') ||
+    document.querySelector('[class*="generating" i]') ||
     Array.from(document.querySelectorAll('button')).some(b => {
       const txt = b.innerText.trim().toLowerCase()
-      return txt.includes('stop')
+      const label = (b.getAttribute('aria-label') || '').toLowerCase()
+      const title = (b.getAttribute('title') || '').toLowerCase()
+      const testid = (b.getAttribute('data-testid') || '').toLowerCase()
+      return txt.includes('stop') || label.includes('stop') || title.includes('stop') || testid.includes('stop')
     })
   )
 
+  // Initialize history count on the first mutation if not already done
+  if (!isHistoryInitialized) {
+    if (count > 0 && !isGptGenerating) {
+      console.log('[FocusStream GPT] Initializing history count to', count)
+      lastMarkdownCount = count
+      lastCompletedText = latestMarkdown ? latestMarkdown.innerText.trim() : ''
+      lastCompletedNode = latestMarkdown
+      isHistoryInitialized = true
+      return
+    } else if (count > 0 && isGptGenerating) {
+      isHistoryInitialized = true
+      console.log('[FocusStream GPT] History initialized while generating. Count:', count)
+    }
+  }
+
   // Reset the closed stream lock if ChatGPT has stopped generating
   if (!isGptGenerating) {
-    lastClosedStreamElement = null
+    userClosedCurrentStream = false
   }
 
   // Handle cases where the message list shrinks (switching chats or deleting messages)
   if (count < lastMarkdownCount) {
     console.log('[FocusStream GPT] Message count decreased from', lastMarkdownCount, 'to', count)
     lastMarkdownCount = count
+    lastCompletedText = latestMarkdown ? latestMarkdown.innerText.trim() : ''
     if (currentObservedNode && !document.body.contains(currentObservedNode)) {
       currentObservedNode = null
       isCurrentlyStreaming = false
     }
+  }
+
+  // To prevent stale element references (e.g., when React replaces DOM elements during generation),
+  // always bind our current observed node to the fresh latest markdown element.
+  if (currentObservedNode && latestMarkdown) {
+    currentObservedNode = latestMarkdown
   }
 
   console.log(
@@ -280,65 +333,69 @@ function handleGptMutations() {
     'LastCount:', lastMarkdownCount,
     'Generating:', isGptGenerating,
     'Streaming:', isCurrentlyStreaming,
-    'HasNode:', !!currentObservedNode
+    'HasNode:', !!currentObservedNode,
+    'Nodes:', markdownDivs.map((d, idx) => `[${idx}] ${d.tagName}.${d.className.replace(/\s+/g, '.')} (Text: "${(d as HTMLElement).innerText.trim().substring(0, 50)}")`)
   )
 
-  // Case 1: A new top-level markdown message node has been added to the chat
+  // Case 1: A new top-level markdown message node has been added to the chat.
+  // We unconditionally start tracking a new container as soon as it appears, 
+  // bypassing any race condition where the Stop button has not yet finished rendering.
   if (count > lastMarkdownCount) {
     console.log('[FocusStream GPT] Case 1 triggered. count > lastMarkdownCount')
     lastMarkdownCount = count
-    if (latestMarkdown && latestMarkdown !== lastClosedStreamElement) {
+    if (latestMarkdown && latestMarkdown !== lastCompletedNode && !userClosedCurrentStream) {
       currentObservedNode = latestMarkdown
       lastTextValue = latestMarkdown.innerText.trim()
       lastChangeTime = Date.now()
+      isCurrentlyStreaming = true
       console.log('[FocusStream GPT] Case 1 - New node observed. Text:', lastTextValue)
       
       if (lastTextValue) {
-        isCurrentlyStreaming = true
         createOverlay(lastTextValue)
       }
     }
     return
   }
 
-  // Case 2: GPT is generating, we aren't tracking any node, and it's not manually closed
-  if (isGptGenerating && !currentObservedNode && latestMarkdown && latestMarkdown !== lastClosedStreamElement) {
+  // Case 2: GPT is generating, we aren't tracking any node, and it's a new message node (not completed/closed)
+  if (isGptGenerating && !currentObservedNode && latestMarkdown && latestMarkdown !== lastCompletedNode && !userClosedCurrentStream && latestMarkdown.innerText.trim() !== lastCompletedText) {
     console.log('[FocusStream GPT] Case 2 triggered (generating state detected)')
     currentObservedNode = latestMarkdown
     lastTextValue = latestMarkdown.innerText.trim()
     lastChangeTime = Date.now()
     isCurrentlyStreaming = true
-    createOverlay(lastTextValue)
+    if (lastTextValue) {
+      createOverlay(lastTextValue)
+    }
     return
   }
 
   // Case 3: We are actively tracking a message node, check for text updates
-  if (currentObservedNode && latestMarkdown) {
-    const isSameNode = currentObservedNode === latestMarkdown
+  if (currentObservedNode) {
+    const text = currentObservedNode.innerText.trim()
     
-    if (isSameNode) {
-      const text = latestMarkdown.innerText.trim()
-      
-      if (text !== lastTextValue) {
-        console.log('[FocusStream GPT] Case 3 - Text changed. Length:', text.length)
-        lastTextValue = text
-        lastChangeTime = Date.now()
-        isCurrentlyStreaming = true
+    if (text !== lastTextValue) {
+      console.log('[FocusStream GPT] Case 3 - Text changed. Length:', text.length)
+      lastTextValue = text
+      lastChangeTime = Date.now()
+      isCurrentlyStreaming = true
 
-        if (!hostElement) {
-          console.log('[FocusStream GPT] Case 3 - hostElement not present, creating overlay')
-          createOverlay(text)
-        } else {
-          textRef.value = text
-        }
-      } else if (isCurrentlyStreaming) {
-        const timeDiff = Date.now() - lastChangeTime
-        // Finish streaming if GPT stopped generating OR it's been quiet for 2.5 seconds
-        if (!isGptGenerating || timeDiff > 2500) {
-          console.log('[FocusStream GPT] Stream finished. Generating:', isGptGenerating, 'Quiet time:', timeDiff, 'ms')
-          isCurrentlyStreaming = false
-          currentObservedNode = null
-        }
+      if (!hostElement) {
+        console.log('[FocusStream GPT] Case 3 - hostElement not present, creating overlay')
+        createOverlay(text)
+      } else {
+        textRef.value = text
+      }
+    } else if (isCurrentlyStreaming) {
+      const timeDiff = Date.now() - lastChangeTime
+      // Timeout streaming if quiet for too long. If still generating, use a longer timeout (10s), otherwise 2s.
+      const timeoutLimit = isGptGenerating ? 10000 : 2000
+      if (timeDiff > timeoutLimit) {
+        console.log('[FocusStream GPT] Stream finished. Quiet time:', timeDiff, 'ms, isGptGenerating:', isGptGenerating)
+        isCurrentlyStreaming = false
+        lastCompletedText = text
+        lastCompletedNode = currentObservedNode
+        currentObservedNode = null
       }
     }
   }
