@@ -16,8 +16,8 @@ const offset = ref(0)
 const isPlaying = ref(true)
 
 // --- Configurable State ---
-const speed = ref(2)
-const fontSize = ref(25)
+const speed = ref(2.3)
+const fontSize = ref(36)
 const position = ref({ x: 0, y: 0 })
 
 const isLoaded = ref(false)
@@ -80,6 +80,55 @@ const onMouseUp = () => {
   document.removeEventListener('mouseup', onMouseUp)
 }
 
+const jumpWords = (delta: number) => {
+  const textEl = textRef.value
+  if (!textEl) return
+  
+  const text = props.text
+  if (!text) return
+
+  // 1. Find the starting character index of each word
+  const wordOffsets: number[] = []
+  const regex = /[^\s]+/g
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    wordOffsets.push(match.index)
+  }
+  
+  if (wordOffsets.length === 0) return
+
+  // 2. Estimate average character width
+  const totalWidth = textEl.offsetWidth
+  const avgCharWidth = totalWidth / text.length
+
+  // 3. Find current character index at the left edge of the viewport
+  const currentScrolledPixels = Math.max(0, -offset.value)
+  const currentCharIndex = currentScrolledPixels / avgCharWidth
+
+  // 4. Find the current word index
+  let currentWordIdx = 0
+  for (let i = 0; i < wordOffsets.length; i++) {
+    const wOffset = wordOffsets[i]
+    if (wOffset !== undefined && wOffset <= currentCharIndex) {
+      currentWordIdx = i
+    } else {
+      break
+    }
+  }
+
+  // 5. Calculate target word index
+  let targetWordIdx = currentWordIdx + delta
+  if (targetWordIdx < 0) targetWordIdx = 0
+  if (targetWordIdx >= wordOffsets.length) targetWordIdx = wordOffsets.length - 1
+
+  // 6. Set the new offset
+  const targetCharIndex = wordOffsets[targetWordIdx] ?? 0
+  const targetPixelOffset = -(targetCharIndex * avgCharWidth)
+  
+  offset.value = targetPixelOffset
+  console.log(`[FocusStream] Jumped ${delta} words. From word index ${currentWordIdx} to ${targetWordIdx}. New offset: ${offset.value}`)
+}
+
 // --- Animation ---
 const togglePlay = () => {
   isPlaying.value = !isPlaying.value
@@ -113,7 +162,7 @@ onMounted(() => {
     } else {
       if (bannerRef.value) {
         bannerRef.value.style.width = '70%'
-        bannerRef.value.style.height = '100px'
+        bannerRef.value.style.height = '200px'
       }
     }
     
@@ -168,6 +217,17 @@ onUnmounted(() => {
     </div>
     
     <div class="controls-container">
+      <!-- Skip Backward Button -->
+      <button 
+        class="control-btn" 
+        @click="jumpWords(-5)"
+        title="Skip backward 5 words"
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/>
+        </svg>
+      </button>
+
       <!-- Play / Pause Button -->
       <button 
         class="control-btn" 
@@ -179,6 +239,17 @@ onUnmounted(() => {
         </svg>
         <svg v-else viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z"/>
+        </svg>
+      </button>
+
+      <!-- Skip Forward Button -->
+      <button 
+        class="control-btn" 
+        @click="jumpWords(5)"
+        title="Skip forward 5 words"
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
         </svg>
       </button>
 
