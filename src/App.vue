@@ -2,17 +2,25 @@
 import { ref, onMounted, watch } from 'vue'
 
 const isEnabled = ref(true)
+const gptFeature = ref(false)
 
 onMounted(() => {
-  chrome.storage.local.get(['focusStreamEnabled'], (result) => {
+  chrome.storage.local.get(['focusStreamEnabled', 'focusStreamGptFeature'], (result) => {
     if (result.focusStreamEnabled !== undefined) {
       isEnabled.value = !!result.focusStreamEnabled
+    }
+    if (result.focusStreamGptFeature !== undefined) {
+      gptFeature.value = !!result.focusStreamGptFeature
     }
   })
 })
 
 watch(isEnabled, (newValue) => {
   chrome.storage.local.set({ focusStreamEnabled: newValue })
+})
+
+watch(gptFeature, (newValue) => {
+  chrome.storage.local.set({ focusStreamGptFeature: newValue })
 })
 </script>
 
@@ -32,6 +40,20 @@ watch(isEnabled, (newValue) => {
         
         <label class="switch">
           <input type="checkbox" v-model="isEnabled">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-title">ChatGPT Autodetect</span>
+          <span class="setting-desc">Auto-stream active generations</span>
+        </div>
+        
+        <label class="switch">
+          <input type="checkbox" v-model="gptFeature">
           <span class="slider round"></span>
         </label>
       </div>
@@ -81,6 +103,12 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 16px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 14px 0;
 }
 
 .setting-row {
